@@ -1,151 +1,101 @@
+import os
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
+from groq import Groq
 
-# Set the title and favicon that appear in the Browser's tab bar.
+# Configuração da página do Streamlit
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title="App de Nutrição e Fitness com IA",
+    page_icon="💪",
+    layout="centered"
 )
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# Título principal
+st.title("💪 Assistente de Nutrição e Treino com IA")
+st.write("Calcula as tuas necessidades diárias e tira dúvidas sobre dieta e exercício com Inteligência Artificial.")
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# Inicializar o cliente da Groq usando os secrets do Streamlit
+api_key = st.secrets.get("GROQ_API_KEY")
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+if not api_key:
+    st.error("⚠️ A chave `GROQ_API_KEY` não foi encontrada nos Secrets do Streamlit! Por favor, configura os Secrets.")
+    st.stop()
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+client = Groq(api_key=api_key)
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+# Barra lateral para navegação
+st.sidebar.header("Navegação")
+opcao = st.sidebar.selectbox("Escolhe uma ferramenta:", ["Calculadora de Calorias/Macros", "Chat com Nutricionista IA"])
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+if opcao == "Calculadora de Calorias/Macros":
+    st.subheader("📊 Calculadora de Necessidades Diárias")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        peso = st.number_input("Peso (kg):", min_value=30.0, max_value=200.0, value=60.0)
+        altura = st.number_input("Altura (cm):", min_value=100.0, max_value=230.0, value=170.0)
+    with col2:
+        idade = st.number_input("Idade:", min_value=10, max_value=100, value=14)
+        objetivo = st.selectbox("Objetivo:", ["Hipertrofia (Ganhar Massa)", "Emagrecimento (Perder Gordura)", "Manutenção"])
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
+    if st.button("Calcular Dieta"):
+        # Estimativa simples de calorias e proteínas
+        if objetivo == "Hipertrofia (Ganhar Massa)":
+            calorias = (peso * 24) + 400
+            proteina = peso * 2.0
+        elif objetivo == "Emagrecimento (Perder Gordura)":
+            calorias = (peso * 24) - 400
+            proteina = peso * 2.2
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+            calorias = peso * 24
+            proteina = peso * 1.8
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+        st.success("✅ Cálculo efetuado com sucesso!")
+        st.metric("Calorias Diárias Estimadas", f"{int(calorias)} kcal")
+        st.metric("Consumo Recomendado de Proteína", f"{int(proteina)} g")
+        
+        st.info("💡 Dica: Mantém a consistência no treino e consome água suficiente todos os dias!")
+
+elif opcao == "Chat com Nutricionista IA":
+    st.subheader("💬 Pergunta ao Especialista em Nutrição e Treino")
+    st.write("Tira dúvidas sobre alimentos, substituições de refeições ou rotinas de exercício.")
+
+    # Caixa de texto para a pergunta do usuário
+    pergunta_usuario = st.text_input("Escreve a tua dúvida aqui:", placeholder="Ex: O que posso comer pré-treino para ter mais energia?")
+
+    if st.button("Enviar Pergunta"):
+        if pergunta_usuario.strip() == "":
+            st.warning("Por favor, escreve uma pergunta antes de enviar.")
+        else:
+            with st.spinner("A IA está a pensar na resposta..."):
+                try:
+                    # Chamada à API da Groq
+                    chat_completion = client.chat.completions.create(
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "És um nutricionista e personal trainer especializado em ajudar jovens e atletas com treinos de hipertrofia, dietas práticas e alimentação saudável."
+                            },
+                            {
+                                "role": "user",
+                                "content": pergunta_usuario
+                            }
+                        ],
+                        model="llama-3.3-70b-versatile",
+                        temperature=0.7,
+                    )
+                    
+                    resposta_ia = chat_completion.choices[0].message.content
+                    st.markdown("### Resposta:")
+                    st.write(resposta_ia)
+                    
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao comunicar com a IA: {e}")
+    
+    
+
+
+   
+
+
+
+        
